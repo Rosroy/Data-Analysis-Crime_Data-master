@@ -1,0 +1,316 @@
+---
+title: Exploring the crime dataset
+author: "Purba Roy"
+
+---
+
+
+
+```{r Setup, message=FALSE}
+# Load standard libraries
+library('dplyr')
+library('censusr')
+library('stringr')
+library('tidyverse')
+```
+
+#### Joining Census Data to Police Reports
+
+Here, we will be joining disparate sets of data - namely: Seattle police crime data, information on Seattle police beats, and education attainment from the US Census.
+
+
+
+##### Importing and Inspecting Crime Data
+
+Loaded the Seattle crime data  from the provided `crime_data.csv` data file. We can find more information on the data here:  \url{https://data.seattle.gov/Public-Safety/Crime-Data/4fs7-3vj5}. 
+
+Performing a basic inspection of the Crime Dataset.
+
+
+**Here, columns "Occurred.Date", and "Occurred.Time" are the date and time for when the crime has occurred. "Reported.Date" and "Reported.Time" are respectively the date and time for when the crime was reported by the police. "Report.Number" is the unique ID for every crime reported. "Crime subcategory" is used to list down the categories of crimes reported, and "Primary offense descirption" is used to briefly smmarize the crime committed. "Precinct" is used to represent the different branches of police stations in a city. "Beat" is the region in which the police patrols in a given period of time. **
+
+**By checking the class of the variables, we see that "Occurred.Date" and "Reported.date" are factors, instead of _DATE_ datatype. The variables "Reported.Time" and "Occurred.Time" are characters, instead of being _TIME_ datatype. "Crime subcategory", "Beat", "Primary offense description, "Neighbourhood", "Sector" are factors, and have character values. **
+
+**Using the dim function, there are 523591 number of crimes reported. **
+
+**To check the column "Occurred.Time", as the values are ranging from single digit to 4 digits values, and as the column represents time, to check if the time is in a 24 hour format, I checked the range of the records. That falls below 2359, which indicates the time is in a 24 hour format. IN many cases the time is not consistent in nature and is even entred as a single digit integer. **
+
+**lastly, I checked the number of NA values in the dataset by using the _summary_ function.**
+
+```{r}
+#To load the data from csv file
+Crime_Dataset <- read.csv("Crime_Data.csv")
+options(scipen=999) #to remove the scietific notation/ exponential data
+
+head(Crime_Dataset,9)
+sapply(Crime_Dataset,class) #checked the class of each variable in the dataset.
+dim(Crime_Dataset) # to check the number of values in the dataset. 
+
+range(Crime_Dataset$Occurred.Time, na.rm= TRUE) # to check if the time is in 24 hour format
+```
+```{r}
+
+summary(Crime_Dataset) # to check NAs
+
+# check if any reported.date is less than occurred.date
+
+#describe the columns
+
+```
+
+##### Looking at Years That Crimes Were Committed
+
+Let's start by looking at the years in which crimes were committed.  
+
+
+What is the earliest year in the dataset?
+**1908 is the earliest year in which a crime occurred in the dataset.**
+
+
+Are there any distinct trends with the annual number of crimes committed in the dataset?
+
+**The annual crime rate was constant till the year 2008-2009, and then suddenly there is an increase in the rate by 40,000- 50,000 crimes in that year. There is a possibility that it happened as data before that time period was not captured, due to non electronic reporting. **
+```{r}
+# check with a line graph about the annual trend, as well as for individual crimes.
+# group by with types of crimes
+
+Crime_DatasetModified <-Crime_Dataset #created a seperate dataset 
+
+# We change the "Occurred Date" and "Reported Date" from factor datatype to date datatype using 
+#as.date function.
+Crime_DatasetModified$Occurred.Date <- as.Date(Crime_DatasetModified$Occurred.Date, format = "%m/%d/%Y")
+class(Crime_DatasetModified$Occurred.Date) #checking the class of the variable now
+
+Crime_DatasetModified$Reported.Date <- as.Date(Crime_DatasetModified$Reported.Date, format = "%m/%d/%Y")
+
+
+#To additionally make the Time data proper in a 24 hour format, we append 0s to the column 
+#"Occurred.Time" and "Reported.Time". 
+Crime_DatasetModified$Occurred.Time <- sprintf("%04d",Crime_DatasetModified$Occurred.Time) 
+# fix to 4 characters 
+
+
+Crime_DatasetModified$Reported.Time <- sprintf("%04d",Crime_DatasetModified$Reported.Time)
+# fix to 4 characters 
+
+
+
+# we create 3 different columns where we seperate the year, month and date from the original column.
+Crime_DatasetModified <- Crime_DatasetModified %>%
+  dplyr::mutate(Occurred.year = lubridate::year(Occurred.Date), 
+                Occurred.month = lubridate::month(Occurred.Date), 
+                Occurred.day = lubridate::day(Occurred.Date))
+
+#Crime_DatasetModified
+
+#finding the range of the year to find the earliest year in the dataset for occurrred crimes.
+range (Crime_DatasetModified$Occurred.year, na.rm=TRUE)
+
+```
+
+
+```{r}
+# to find the trend in the crime rate throughout the years.
+
+
+# plotting the number of crimes and the year to see the timeline.
+a <- Crime_DatasetModified %>% group_by(Occurred.year) %>% summarise( CrimeCount= n())
+
+ggplot(data = a, aes(x = Occurred.year, y =CrimeCount ), na.rm=TRUE) +
+  geom_point(aes(size = CrimeCount), alpha = 1/3) +
+  geom_smooth( se= FALSE,alpha = 1/3)  + scale_x_continuous(limits = c(1908, 2020))
+
+
+```
+```{r}
+#subsetting the data for years after 2011
+#used the filter option to keep data only for years after and on 2011.
+Crime_DatasetModified2011 <- filter(Crime_DatasetModified, Crime_DatasetModified$Occurred.year >=2011)
+
+
+# As the graph suddenly increases in the year 2010, I zoomed in on that particular year range
+ggplot(data = a, aes(x = Occurred.year, y =CrimeCount ), na.rm=TRUE) +
+  geom_point(aes(size = CrimeCount), alpha = 1/3) +
+  geom_smooth( se= FALSE,alpha = 1/3)  + scale_x_continuous(limits = c(2000, 2020))
+```
+
+##### Looking at Frequency of Beats
+
+
+
+**A beat is the territory and time that a police officer patrols. This is used to strengthen the relation between police and the community. (Wikipedia) officers patrol a region druing a particular shift / time **
+**Here, we see that there are 2321 instances where the beats are not named , and is blank. There are 0 Na values.**
+**ABout anomalies, yes there are a few. For Beat L2, there are 11220 values whereas for S, there are only 7 beat. It is probably because of beat not documented in the report. There are 0 NA values for Beat in the Crime Dataset 2011.**
+```{r}
+
+# used summary to find the frequency of each beat, and also check the numbe rof NA values. 
+summary(Crime_DatasetModified2011$Beat)
+
+
+
+```
+
+##### Importing Police Beat Data and Filtering on Frequency
+
+Loading the data on Seattle police beats  provided in `police_beat_and_precinct_centerpoints.csv`. We can find additional information on the data here: (https://data.seattle.gov/Land-Base/Police-Beat-and-Precinct-Centerpoints/4khs-fz35). 
+
+
+
+
+**The Crime Dataset includes police beats that are not present in the Beats Dataset. There are 7 such unique beats that are not in the dataset. **
+
+How many and with what frequency do they occur?
+
+**To check the frequency, I used Summary function. This tells us that there are maximum blank values, and a few in DET,INV,K,SS,WS,S, CTY. Also, there are 2321 blank values.**
+
+
+**There is a total of 2343 columns where police beats are not present. That is 0.59 % of the total values in the Crime dataset( 2011 subset). I dont think removing any data is advisable, however if we remove these values, it will not drastically alter the scope, as the crime rate values here range from 300-500, and not 48000. **
+```{r}
+# importing data 
+Beats_Dataset <- read.csv('Police_Beat_and_Precinct_Centerpoints.csv')
+head(Beats_Dataset,9)
+
+# used Anti join to check the discrepnacies in the 2 datasets
+
+Amergered_data <- anti_join(Crime_DatasetModified2011,Beats_Dataset, by= c("Beat"="Name"))
+head(Amergered_data,9)
+
+# as there are multiple blank values, used Filter to remove the blank values.
+a <- filter(Amergered_data, Beat !='')
+
+unique(a$Beat) # to check how many different beats are absent
+
+summary(Amergered_data$Beat) # to check the frequency
+
+filter(Beats_Dataset, Name =='DET')  # to check if a value is present in Beat Dataset
+
+dim(Amergered_data)/dim(Crime_DatasetModified2011)*100  
+#  to calculate te percentage on value inconsistency
+
+
+# to check the graph for missing values to determine the effect of removing these from
+#the 2011 subset dataset.
+
+a <- Amergered_data %>% group_by(Occurred.year) %>% summarise( CrimeCount= n())
+ggplot(data = a, aes(x = Occurred.year, y =CrimeCount ), na.rm=TRUE) +
+  geom_point(aes(size = CrimeCount), alpha = 1/3) +
+  geom_smooth( se= FALSE,alpha = 1/3)  + scale_x_continuous(limits = c(1908, 2020))
+```
+
+Removing all instances in the Crime Dataset that have beats which occur fewer than 10 times across the Crime Dataset. Also removing any observations with missing beats. After only keeping years of interest and filtering based on frequency of the beat, how many observations do we now have in the Crime Dataset?
+
+**We  now have 389002 values in the crime dataset**
+
+```{r}
+# to remove the beats with values less than 10
+Crime_DatasetModified2011 <- 
+  Crime_DatasetModified2011[Crime_DatasetModified2011$Beat%in% 
+                              names(which(table(Crime_DatasetModified2011$Beat) >10)), ]
+head(Crime_DatasetModified2011,9)
+
+
+# to remove blank values from beat
+Crime_DatasetModified2011 <- Crime_DatasetModified2011 %>% filter(!Beat=='')
+
+summary(Crime_DatasetModified2011$Beat)
+dim(Crime_DatasetModified2011)
+
+```
+
+##### (e) Importing and Inspecting Police Beat Data
+
+To join the Beat Dataset to census data, we must have census tract information. Using the `censusr` package to extract the 15-digit census tract for each police beat using the corresponding latitude and longitude. 
+
+```{r , eval=FALSE}
+install.packages("censusr")
+library("censusr")
+```
+```{r}
+
+Beats_Dataset$Census <- apply(Beats_Dataset, 1, function(row)
+call_geolocator_latlon(row["Latitude"],row["Longitude"])) 
+
+head(Beats_Dataset,9)
+
+```
+
+
+
+
+##### (f) Extracting FIPS Codes
+
+Once we have the 15-digit census codes, we will break down the code based on information of interest. You can find more information on what these 15 digits represent here: https://transition.fcc.gov/form477/Geo/more_about_census_blocks.pdf.
+
+First, creating a column that contains the state code for each beat in the Beats Dataset. Then creating a column that contains the county code for each beat. Find the FIPS codes for WA State and King County (the county of Seattle) online. 
+
+
+**The washington state code is 53, and FIPS county code for King county is 033. Yes, the extracted data is expected. **
+```{r, eval=FALSE}
+
+#Beats_Dataset
+#Crime_DatasetModified2011
+
+# Census data consists of digits where the first 2 digits represent state , 3 represent county
+Beats_Dataset$stateCode <- substr(Beats_Dataset$Census, 1, 2) 
+Beats_Dataset$countyCode <- substr(Beats_Dataset$Census, 3, 5) 
+```
+
+
+##### Extracting 11-digit Codes
+
+The census data uses an 11-digit code that consists of the state, county, and tract code. It does not include the block code. To join the census data to the Beats Dataset, we can have this code for each of the beats. 
+
+```{r, eval=FALSE}
+Beats_Dataset
+
+# using substring to fetch the first 11 digits
+Beats_Dataset$SCTCode <- substr(Beats_Dataset$Census, 1, 11) 
+head(Beats_Dataset,9)
+```
+
+##### Extracting 11-digit Codes From Census
+
+Now, we will examine census data  provided om `census_edu_data.csv`. The data includes counts of education attainment across different census tracts. Note how this data is in a 'wide' format and how it can be converted to a 'long' format.
+
+The census data contains a `GEO.id` column. Among other things, this variable encodes the 11-digit code that we had extracted above for each of the police beats. Specifically, when we look at the characters after the characters "US" for values of `GEO.id`, we see encodings for state, county, and tract, which should align with the beats we had above. 
+
+
+
+```{r, eval=FALSE}
+
+
+censusEdu <- read.csv("censusedu.csv")
+
+# extracting the digits
+censusEdu$geoId11 <- substr(censusEdu$GEO.id,10,20)
+ # for some reason census_edu_data.csv is not getting imported even though the path is correct.
+
+
+```
+
+##### Join Datasets
+
+Joining the census data with the Beat Dataset using the 11-digit codes as keys. Are there any police beats that do not have any associated census data? 
+
+Then, joining the Crime Dataset to our joined beat/census data. We can do this using the police beat name. 
+
+
+
+```{r, eval=FALSE}
+# joining census data with beat data
+install.packages("plyr")
+library(plyr)
+Beats_Dataset <- join(Beats_Dataset,censusEdu, by= c("SCTCode"="geoId11"))
+
+
+# joining crime dataset and joined beat dataset
+Crime_DatasetModified2011 <- join(Crime_DatasetModified2011,Beats_Dataset,by = c("Beat"="Name"))
+
+dim(Crime_DatasetModified2011)
+
+```
+
+References:
+https://stackoverflow.com/questions/14409084/pad-with-leading-zeros-to-common-width/14409265
+https://r4ds.had.co.nz/transform.html
+https://stackoverflow.com/questions/3919205/using-r-delete-rows-when-a-value-repeated-less-than-3-times
